@@ -4,6 +4,45 @@ from fpdf import FPDF
 import io
 import os
 
+import re # <-- ADICIONE ISSO LÁ NO TOPO JUNTO COM OS OUTROS IMPORTS
+
+# --- SUBSTITUA A FUNÇÃO ANTIGA POR ESTA ---
+def processar_pdf_forms(arquivo_pdf):
+    # Lê o PDF do Forms
+    doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
+    texto_completo = ""
+    for page in doc:
+        texto_completo += page.get_text()
+    
+    linhas = texto_completo.split('\n')
+    linhas_limpas = []
+    
+    for linha in linhas:
+        linha = linha.strip()
+        
+        # Ignora linhas totalmente vazias
+        if not linha:
+            continue
+            
+        # CORREÇÃO 1: Encurta linhas de sublinhado gigantes (o maior causador do erro)
+        # Transforma "______________________" em apenas "____"
+        linha = re.sub(r'_{15,}', '____', linha)
+        
+        # CORREÇÃO 2: Quebra "palavras" ou links absurdamente longos (maiores que 60 caracteres)
+        palavras_seguras = []
+        for palavra in linha.split(' '):
+            if len(palavra) > 60:
+                # Se a palavra for gigante, quebra ela em pedaços com um espaço no meio
+                palavra_quebrada = ' '.join(palavra[i:i+60] for i in range(0, len(palavra), 60))
+                palavras_seguras.append(palavra_quebrada)
+            else:
+                palavras_seguras.append(palavra)
+                
+        linha_segura = ' '.join(palavras_seguras)
+        linhas_limpas.append(linha_segura)
+        
+    return linhas_limpas
+
 # --- 1. CONFIGURAÇÃO DA INTERFACE (STREAMLIT) ---
 st.set_page_config(page_title="NeuroDoc | Gerador de Anamnese", page_icon="📄", layout="centered")
 
