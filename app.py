@@ -14,7 +14,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# Estilo visual moderno
+# Estilo visual moderno (Mantido as suas alterações)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -61,13 +61,20 @@ def limpar_texto_forms(arquivo_pdf):
         l = l.strip()
         if not l: continue
         
-        # Remove caracteres problemáticos e limpa sequências longas
-        l = l.replace('\xa0', ' ')
+        # 1. TRADUTOR DE SÍMBOLOS: O que quebrava o PDF era a caixinha de seleção!
+        l = l.replace('☐', '[ ]').replace('☑', '[X]')
+        l = l.replace('•', '-').replace('\xa0', ' ')
+        
+        # 2. FILTRO DE ENCODING: Substitui qualquer emoji ou símbolo bizarro por "?" para não crachar a fonte Helvetica
+        l = l.encode('latin-1', 'replace').decode('latin-1')
+        
+        # 3. Limpa linhas de formulário gigantes
         l = re.sub(r'_{10,}', '____', l)
         l = re.sub(r'\.{10,}', '....', l)
         
-        # QUEBRA FORÇADA: Evita o erro de "horizontal space" cortando qualquer palavra > 50 chars
-        l = re.sub(r'(\S{50})', r'\1 ', l)
+        # 4. QUEBRA FORÇADA: Corta links gigantes
+        l = re.sub(r'(\S{40})', r'\1 ', l)
+        
         resultado.append(l)
     return resultado
 
