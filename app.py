@@ -9,7 +9,7 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO DA INTERFACE ---
 # Isso deve ser a primeira coisa no código
 st.set_page_config(
-    page_title="NeuroDoc | Gerador de Anamnese", 
+    page_title="NeuroDoc | Organizar Anamnese - Google Forms", 
     page_icon="📄", 
     layout="centered"
 )
@@ -22,8 +22,8 @@ st.markdown("""
     .sub-title { font-family: 'Inter', sans-serif; color: #848E9C; text-align: center; margin-bottom: 30px; }
     .stDownloadButton > button { width: 100%; background-color: #0071e3 !important; color: white !important; border-radius: 10px !important; height: 50px; font-weight: 600; }
     </style>
-    <h1 class="main-title">NeuroDoc Generator.</h1>
-    <p class="sub-title">Padronização ABNT para Clínica Neurointegrando</p>
+    <h1 class="main-title">NeuroDoc.</h1>
+    <p class="sub-title">Padronização Anamnese | Clínica Neurointegrando</p>
 """, unsafe_allow_html=True)
 
 # --- 2. CLASSE DO PDF (PADRÃO ABNT) ---
