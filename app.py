@@ -45,7 +45,7 @@ class NeuroPDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
-# --- 3. LÓGICA DE PROCESSAMENTO (O CORAÇÃO DO SISTEMA) ---
+# --- 3. LÓGICA DE PROCESSAMENTO (BLINDADA) ---
 def limpar_texto_forms(arquivo_pdf):
     doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
     texto = ""
@@ -59,41 +59,37 @@ def limpar_texto_forms(arquivo_pdf):
         l = l.strip()
         if not l: continue
         
-        # ==========================================
-        # FILTRO DE SUJEIRA DO GOOGLE FORMS (A SOLUÇÃO)
-        # ==========================================
-        
-        # 1. Ignora os Links Gigantes do rodapé
-        if "https://docs.google.com" in l or "edit#response=" in l:
-            continue
-            
-        # 2. Ignora datas de impressão (ex: 15/04/2026, 17:44)
-        if re.match(r'^\d{2}/\d{2}/\d{4}, \d{2}:\d{2}$', l):
-            continue
-            
-        # 3. Ignora a numeração de página nativa do forms (ex: 35/36)
-        if re.match(r'^\d+/\d+$', l):
-            continue
-            
-        # 4. Ignora o título repetitivo que aparece em toda página
-        if l == "Clínica Neurointegrando - Anamnese interdisciplinar":
-            continue
+        # Filtros de cabeçalho e rodapé inúteis do Forms
+        if "https://docs.google.com" in l or "edit#response=" in l: continue
+        if re.match(r'^\d{2}/\d{2}/\d{4}, \d{2}:\d{2}$', l): continue
+        if re.match(r'^\d+/\d+$', l): continue
+        if l == "Clínica Neurointegrando - Anamnese interdisciplinar": continue
 
-        # ==========================================
-        
-        # TRADUTOR DE SÍMBOLOS E ENCODING
+        # Tradutor de caixas de seleção
         l = l.replace('☐', '[ ]').replace('☑', '[X]')
         l = l.replace('•', '-').replace('\xa0', ' ')
-        l = l.encode('latin-1', 'replace').decode('latin-1')
         
-        # Limpa linhas e underlines
-        l = re.sub(r'_{10,}', '____', l)
-        l = re.sub(r'\.{10,}', '....', l)
+        # A MÁGICA DESTRUTIVA: Ignora tudo que não for texto reconhecido pela Helvetica
+        l = l.encode('latin-1', 'ignore').decode('latin-1')
         
-        # Quebra forçada de segurança
-        l = re.sub(r'(\S{45})', r'\1 ', l)
+        # Pica underlines e pontilhados gigantes
+        l = re.sub(r'_{5,}', '____', l)
+        l = re.sub(r'\.{5,}', '....', l)
+        l = re.sub(r'-{5,}', '----', l)
         
-        resultado.append(l)
+        # Quebra palavras imensas à força (picota a cada 35 letras)
+        palavras = l.split(' ')
+        palavras_seguras = []
+        for p in palavras:
+            if len(p) > 35:
+                p = ' '.join([p[i:i+35] for i in range(0, len(p), 35)])
+            palavras_seguras.append(p)
+            
+        l_segura = ' '.join(palavras_seguras)
+        
+        if l_segura.strip():
+            resultado.append(l_segura.strip())
+            
     return resultado
 
 def criar_documento(dados):
@@ -108,11 +104,18 @@ def criar_documento(dados):
             pdf.set_font("helvetica", "B", 12)
             pdf.set_text_color(30, 35, 41)
             pdf.ln(4)
-            pdf.multi_cell(0, 6, linha)
         else:
             pdf.set_font("helvetica", "", 12)
             pdf.set_text_color(100, 100, 100)
+        
+        # MODO DE SOBREVIVÊNCIA: Tenta escrever. Se falhar, avisa e continua.
+        try:
             pdf.multi_cell(0, 6, linha)
+            pdf.ln(2)
+        except Exception as e:
+            pdf.set_font("helvetica", "B", 10)
+            pdf.set_text_color(255, 0, 0) # Fica vermelho
+            pdf.multi_cell(0, 6, f"[AVISO: TRECHO ILEGÍVEL DO FORMS REMOVIDO AQUI]")
             pdf.ln(2)
             
     return pdf.output()
@@ -134,6 +137,6 @@ if upload:
                 mime="application/pdf"
             )
     except Exception as e:
-        st.error(f"Erro no processamento: {e}")
+        st.error(f"Erro no processamento geral: {e}")
 
 st.markdown("<br><hr><center><p style='color:#848E9C; font-size:12px;'>NeuroDoc System • Clínica Neurointegrando</p></center>", unsafe_allow_html=True)
