@@ -3,45 +3,7 @@ import fitz  # PyMuPDF
 from fpdf import FPDF
 import io
 import os
-
-import re # <-- ADICIONE ISSO LÁ NO TOPO JUNTO COM OS OUTROS IMPORTS
-
-# --- SUBSTITUA A FUNÇÃO ANTIGA POR ESTA ---
-def processar_pdf_forms(arquivo_pdf):
-    # Lê o PDF do Forms
-    doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
-    texto_completo = ""
-    for page in doc:
-        texto_completo += page.get_text()
-    
-    linhas = texto_completo.split('\n')
-    linhas_limpas = []
-    
-    for linha in linhas:
-        linha = linha.strip()
-        
-        # Ignora linhas totalmente vazias
-        if not linha:
-            continue
-            
-        # CORREÇÃO 1: Encurta linhas de sublinhado gigantes (o maior causador do erro)
-        # Transforma "______________________" em apenas "____"
-        linha = re.sub(r'_{15,}', '____', linha)
-        
-        # CORREÇÃO 2: Quebra "palavras" ou links absurdamente longos (maiores que 60 caracteres)
-        palavras_seguras = []
-        for palavra in linha.split(' '):
-            if len(palavra) > 60:
-                # Se a palavra for gigante, quebra ela em pedaços com um espaço no meio
-                palavra_quebrada = ' '.join(palavra[i:i+60] for i in range(0, len(palavra), 60))
-                palavras_seguras.append(palavra_quebrada)
-            else:
-                palavras_seguras.append(palavra)
-                
-        linha_segura = ' '.join(palavras_seguras)
-        linhas_limpas.append(linha_segura)
-        
-    return linhas_limpas
+import re
 
 # --- 1. CONFIGURAÇÃO DA INTERFACE (STREAMLIT) ---
 st.set_page_config(page_title="NeuroDoc | Gerador de Anamnese", page_icon="📄", layout="centered")
@@ -86,10 +48,32 @@ def processar_pdf_forms(arquivo_pdf):
     for page in doc:
         texto_completo += page.get_text()
     
-    # Aqui fazemos uma limpeza básica. O Forms costuma colocar quebras de linha estranhas.
     linhas = texto_completo.split('\n')
-    linhas_limpas = [linha.strip() for linha in linhas if linha.strip() != ""]
+    linhas_limpas = []
     
+    for linha in linhas:
+        linha = linha.strip()
+        
+        # Ignora linhas totalmente vazias
+        if not linha:
+            continue
+            
+        # CORREÇÃO 1: Encurta linhas de sublinhado gigantes (o maior causador do erro fpdf)
+        linha = re.sub(r'_{15,}', '____', linha)
+        
+        # CORREÇÃO 2: Quebra "palavras" ou links absurdamente longos
+        palavras_seguras = []
+        for palavra in linha.split(' '):
+            if len(palavra) > 60:
+                # Se a palavra for gigante, quebra ela em pedaços com um espaço no meio
+                palavra_quebrada = ' '.join(palavra[i:i+60] for i in range(0, len(palavra), 60))
+                palavras_seguras.append(palavra_quebrada)
+            else:
+                palavras_seguras.append(palavra)
+                
+        linha_segura = ' '.join(palavras_seguras)
+        linhas_limpas.append(linha_segura)
+        
     return linhas_limpas
 
 def gerar_pdf_padronizado(linhas_texto):
@@ -105,10 +89,7 @@ def gerar_pdf_padronizado(linhas_texto):
     cor_pergunta = (30, 35, 41)   # Cinza escuro (quase preto)
     cor_resposta = (100, 100, 100) # Cinza médio
 
-    # Lógica de montagem: Assumimos que perguntas têm '?' ou são os primeiros itens
-    # O Google Forms alterna Pergunta e Resposta. 
-    # Como o Forms é bagunçado, vamos imprimir em blocos.
-    
+    # Lógica de montagem: Assumimos que perguntas têm '?' ou são curtas
     for linha in linhas_texto:
         # Se a linha termina com "?" ou parece um título de pergunta (Forms)
         if linha.endswith("?") or len(linha) < 50:
@@ -131,7 +112,7 @@ arquivo_forms = st.file_uploader("📥 Suba o PDF gerado pelo Google Forms", typ
 if arquivo_forms:
     with st.spinner("Transformando e aplicando papel timbrado..."):
         try:
-            # Extrai o texto sujo
+            # Extrai o texto sujo e limpa os erros de espaçamento
             dados_extraidos = processar_pdf_forms(arquivo_forms)
             
             # Gera o PDF limpo
