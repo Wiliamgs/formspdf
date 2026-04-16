@@ -13,7 +13,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# Estilo visual moderno
+# Estilo visual moderno (Suas alterações mantidas)
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -45,7 +45,7 @@ class NeuroPDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
-# --- 3. LÓGICA DE PROCESSAMENTO (BLINDADA) ---
+# --- 3. LÓGICA DE PROCESSAMENTO (DETECÇÃO DE RESPOSTAS) ---
 def limpar_texto_forms(arquivo_pdf):
     doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
     texto = ""
@@ -57,39 +57,24 @@ def limpar_texto_forms(arquivo_pdf):
     
     for l in linhas:
         l = l.strip()
-        if not l: continue
+        if not l or len(l) < 2: continue
         
-        # Filtros de cabeçalho e rodapé inúteis do Forms
+        # Filtros de rodapé e lixo do Forms
         if "https://docs.google.com" in l or "edit#response=" in l: continue
         if re.match(r'^\d{2}/\d{2}/\d{4}, \d{2}:\d{2}$', l): continue
         if re.match(r'^\d+/\d+$', l): continue
-        if l == "Clínica Neurointegrando - Anamnese interdisciplinar": continue
-
-        # Tradutor de caixas de seleção
+        
+        # Tradutor de símbolos
         l = l.replace('☐', '[ ]').replace('☑', '[X]')
         l = l.replace('•', '-').replace('\xa0', ' ')
         
-        # A MÁGICA DESTRUTIVA: Ignora tudo que não for texto reconhecido pela Helvetica
+        # Limpeza de caracteres bizarros
         l = l.encode('latin-1', 'ignore').decode('latin-1')
         
-        # Pica underlines e pontilhados gigantes
-        l = re.sub(r'_{5,}', '____', l)
-        l = re.sub(r'\.{5,}', '....', l)
-        l = re.sub(r'-{5,}', '----', l)
+        # Proteção contra erro de espaço (quebra palavras > 45 chars)
+        l = re.sub(r'(\S{45})', r'\1 ', l)
         
-        # Quebra palavras imensas à força (picota a cada 35 letras)
-        palavras = l.split(' ')
-        palavras_seguras = []
-        for p in palavras:
-            if len(p) > 35:
-                p = ' '.join([p[i:i+35] for i in range(0, len(p), 35)])
-            palavras_seguras.append(p)
-            
-        l_segura = ' '.join(palavras_seguras)
-        
-        if l_segura.strip():
-            resultado.append(l_segura.strip())
-            
+        resultado.append(l)
     return resultado
 
 def criar_documento(dados):
@@ -100,23 +85,25 @@ def criar_documento(dados):
     pdf.set_auto_page_break(auto=True, margin=25)
 
     for linha in dados:
-        if linha.endswith("?") or len(linha) < 45:
-            pdf.set_font("helvetica", "B", 12)
-            pdf.set_text_color(30, 35, 41)
-            pdf.ln(4)
-        else:
-            pdf.set_font("helvetica", "", 12)
-            pdf.set_text_color(100, 100, 100)
+        # IDENTIFICADOR DE PERGUNTA: Termina com ? ou : ou é um título de seção
+        e_pergunta = linha.endswith("?") or linha.endswith(":") or linha.isupper()
         
-        # MODO DE SOBREVIVÊNCIA: Tenta escrever. Se falhar, avisa e continua.
-        try:
+        if e_pergunta:
+            # PERGUNTA: Fonte normal e cor mais suave (Cinza)
+            pdf.set_font("helvetica", "", 11) 
+            pdf.set_text_color(100, 100, 100)
+            pdf.ln(2)
             pdf.multi_cell(0, 6, linha)
-            pdf.ln(2)
-        except Exception as e:
-            pdf.set_font("helvetica", "B", 10)
-            pdf.set_text_color(255, 0, 0) # Fica vermelho
-            pdf.multi_cell(0, 6, f"[AVISO: TRECHO ILEGÍVEL DO FORMS REMOVIDO AQUI]")
-            pdf.ln(2)
+        else:
+            # RESPOSTA: Fonte Negrito e cor Preta (Destaque que você pediu)
+            pdf.set_font("helvetica", "B", 12)
+            pdf.set_text_color(0, 0, 0)
+            try:
+                pdf.multi_cell(0, 6, f"> {linha}") # Adiciona um marcador para separar visualmente
+                pdf.ln(1)
+            except:
+                # Caso a linha ainda tenha algum caractere "maldito", ele pula
+                continue
             
     return pdf.output()
 
@@ -125,11 +112,11 @@ upload = st.file_uploader("📥 Arraste o PDF do Google Forms aqui", type="pdf")
 
 if upload:
     try:
-        with st.spinner("Limpando metadados e gerando documento..."):
+        with st.spinner("Organizando perguntas e destacando respostas..."):
             texto_limpo = limpar_texto_forms(upload)
             pdf_final = criar_documento(texto_limpo)
             
-            st.success("✨ Documento limpo e pronto!")
+            st.success("✨ Anamnese organizada com sucesso!")
             st.download_button(
                 label="📥 Baixar Anamnese Padronizada",
                 data=bytes(pdf_final),
@@ -137,6 +124,6 @@ if upload:
                 mime="application/pdf"
             )
     except Exception as e:
-        st.error(f"Erro no processamento geral: {e}")
+        st.error(f"Erro no processamento: {e}")
 
 st.markdown("<br><hr><center><p style='color:#848E9C; font-size:12px;'>NeuroDoc System • Clínica Neurointegrando</p></center>", unsafe_allow_html=True)
