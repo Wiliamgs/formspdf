@@ -7,14 +7,13 @@ import re
 from datetime import date
 
 # --- 1. CONFIGURAÇÃO DA INTERFACE ---
-# Isso deve ser a primeira coisa no código
 st.set_page_config(
     page_title="NeuroDoc | Organizar Anamnese - Google Forms", 
     page_icon="📄", 
     layout="centered"
 )
 
-# Estilo visual moderno (Mantido as suas alterações)
+# Estilo visual moderno
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -36,7 +35,6 @@ class NeuroPDF(FPDF):
 
     def footer(self):
         self.set_y(-30)
-        # Tenta carregar o logo download.png
         if os.path.exists("download.png"):
             try:
                 self.image("download.png", x=85, w=40)
@@ -47,7 +45,7 @@ class NeuroPDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
-# --- 3. LÓGICA DE PROCESSAMENTO ---
+# --- 3. LÓGICA DE PROCESSAMENTO (O CORAÇÃO DO SISTEMA) ---
 def limpar_texto_forms(arquivo_pdf):
     doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
     texto = ""
@@ -61,19 +59,39 @@ def limpar_texto_forms(arquivo_pdf):
         l = l.strip()
         if not l: continue
         
-        # 1. TRADUTOR DE SÍMBOLOS: O que quebrava o PDF era a caixinha de seleção!
+        # ==========================================
+        # FILTRO DE SUJEIRA DO GOOGLE FORMS (A SOLUÇÃO)
+        # ==========================================
+        
+        # 1. Ignora os Links Gigantes do rodapé
+        if "https://docs.google.com" in l or "edit#response=" in l:
+            continue
+            
+        # 2. Ignora datas de impressão (ex: 15/04/2026, 17:44)
+        if re.match(r'^\d{2}/\d{2}/\d{4}, \d{2}:\d{2}$', l):
+            continue
+            
+        # 3. Ignora a numeração de página nativa do forms (ex: 35/36)
+        if re.match(r'^\d+/\d+$', l):
+            continue
+            
+        # 4. Ignora o título repetitivo que aparece em toda página
+        if l == "Clínica Neurointegrando - Anamnese interdisciplinar":
+            continue
+
+        # ==========================================
+        
+        # TRADUTOR DE SÍMBOLOS E ENCODING
         l = l.replace('☐', '[ ]').replace('☑', '[X]')
         l = l.replace('•', '-').replace('\xa0', ' ')
-        
-        # 2. FILTRO DE ENCODING: Substitui qualquer emoji ou símbolo bizarro por "?" para não crachar a fonte Helvetica
         l = l.encode('latin-1', 'replace').decode('latin-1')
         
-        # 3. Limpa linhas de formulário gigantes
+        # Limpa linhas e underlines
         l = re.sub(r'_{10,}', '____', l)
         l = re.sub(r'\.{10,}', '....', l)
         
-        # 4. QUEBRA FORÇADA: Corta links gigantes
-        l = re.sub(r'(\S{40})', r'\1 ', l)
+        # Quebra forçada de segurança
+        l = re.sub(r'(\S{45})', r'\1 ', l)
         
         resultado.append(l)
     return resultado
@@ -86,7 +104,6 @@ def criar_documento(dados):
     pdf.set_auto_page_break(auto=True, margin=25)
 
     for linha in dados:
-        # Se for pergunta (curta ou com ?)
         if linha.endswith("?") or len(linha) < 45:
             pdf.set_font("helvetica", "B", 12)
             pdf.set_text_color(30, 35, 41)
@@ -98,7 +115,6 @@ def criar_documento(dados):
             pdf.multi_cell(0, 6, linha)
             pdf.ln(2)
             
-    # Gera o PDF como bytes
     return pdf.output()
 
 # --- 4. FLUXO DO APP ---
@@ -106,11 +122,11 @@ upload = st.file_uploader("📥 Arraste o PDF do Google Forms aqui", type="pdf")
 
 if upload:
     try:
-        with st.spinner("Gerando documento..."):
+        with st.spinner("Limpando metadados e gerando documento..."):
             texto_limpo = limpar_texto_forms(upload)
             pdf_final = criar_documento(texto_limpo)
             
-            st.success("✨ Documento pronto!")
+            st.success("✨ Documento limpo e pronto!")
             st.download_button(
                 label="📥 Baixar Anamnese Padronizada",
                 data=bytes(pdf_final),
