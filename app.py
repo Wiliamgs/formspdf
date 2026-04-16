@@ -13,7 +13,7 @@ st.set_page_config(
     layout="centered"
 )
 
-# Estilo visual moderno (Suas alterações mantidas)
+# Estilo visual moderno
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
@@ -45,7 +45,7 @@ class NeuroPDF(FPDF):
         self.set_text_color(128, 128, 128)
         self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", align="C")
 
-# --- 3. LÓGICA DE PROCESSAMENTO (DETECÇÃO DE RESPOSTAS) ---
+# --- 3. LÓGICA DE PROCESSAMENTO E FILTRO DE RESPOSTAS ---
 def limpar_texto_forms(arquivo_pdf):
     doc = fitz.open(stream=arquivo_pdf.read(), filetype="pdf")
     texto = ""
@@ -55,25 +55,48 @@ def limpar_texto_forms(arquivo_pdf):
     linhas = texto.split('\n')
     resultado = []
     
+    # Fila para gerenciar caixas de seleção separadas do texto
+    fila_de_opcoes = []
+    
     for l in linhas:
         l = l.strip()
-        if not l or len(l) < 2: continue
+        if not l: continue
         
-        # Filtros de rodapé e lixo do Forms
+        # 1. Filtra lixo do cabeçalho/rodapé do Forms
         if "https://docs.google.com" in l or "edit#response=" in l: continue
         if re.match(r'^\d{2}/\d{2}/\d{4}, \d{2}:\d{2}$', l): continue
         if re.match(r'^\d+/\d+$', l): continue
-        
-        # Tradutor de símbolos
-        l = l.replace('☐', '[ ]').replace('☑', '[X]')
-        l = l.replace('•', '-').replace('\xa0', ' ')
-        
-        # Limpeza de caracteres bizarros
+        if l == "Clínica Neurointegrando - Anamnese interdisciplinar": continue
+
+        # 2. IDENTIFICADOR DE CAIXAS ISOLADAS (Quando o PDF separa o ícone do texto)
+        if l in ['☐', '◯', '○']:
+            fila_de_opcoes.append(False) # Adiciona instrução: "Descartar o próximo texto"
+            continue
+        if l in ['☑', '◉', '●', '✅']:
+            fila_de_opcoes.append(True)  # Adiciona instrução: "Manter o próximo texto"
+            continue
+
+        # 3. APLICA A REGRA DA FILA SE FOR UM TEXTO DE OPÇÃO
+        if fila_de_opcoes:
+            manter_texto = fila_de_opcoes.pop(0)
+            if not manter_texto:
+                continue # A mágica acontece aqui: A opção não selecionada é apagada!
+
+        # 4. IDENTIFICADOR DE CAIXAS NA MESMA LINHA (Inline)
+        if '☐' in l or '◯' in l or '○' in l:
+            continue # Descarta a linha inteira, pois não foi selecionada
+
+        # Se a linha tem a caixa marcada, nós limpamos o símbolo e guardamos o texto!
+        if '☑' in l or '◉' in l or '●' in l or '✅' in l:
+            l = re.sub(r'[☑◉●✅]', '', l).strip()
+            if not l: continue
+
+        # 5. Tratamento de segurança final
         l = l.encode('latin-1', 'ignore').decode('latin-1')
-        
-        # Proteção contra erro de espaço (quebra palavras > 45 chars)
+        l = re.sub(r'_{5,}', '____', l)
+        l = re.sub(r'\.{5,}', '....', l)
         l = re.sub(r'(\S{45})', r'\1 ', l)
-        
+
         resultado.append(l)
     return resultado
 
@@ -85,25 +108,25 @@ def criar_documento(dados):
     pdf.set_auto_page_break(auto=True, margin=25)
 
     for linha in dados:
-        # IDENTIFICADOR DE PERGUNTA: Termina com ? ou : ou é um título de seção
+        # Identifica se é Pergunta (termina com pontuação ou é tudo maiúsculo)
         e_pergunta = linha.endswith("?") or linha.endswith(":") or linha.isupper()
         
         if e_pergunta:
-            # PERGUNTA: Fonte normal e cor mais suave (Cinza)
-            pdf.set_font("helvetica", "", 11) 
-            pdf.set_text_color(100, 100, 100)
-            pdf.ln(2)
+            # LAYOUT DA PERGUNTA: Fonte Menor (11) e Cinza Escuro
+            pdf.set_font("helvetica", "", 11)
+            pdf.set_text_color(100, 100, 100) 
+            pdf.ln(4)
             pdf.multi_cell(0, 6, linha)
         else:
-            # RESPOSTA: Fonte Negrito e cor Preta (Destaque que você pediu)
+            # LAYOUT DA RESPOSTA: Fonte Maior (12), Negrito e Preto Absoluto
             pdf.set_font("helvetica", "B", 12)
-            pdf.set_text_color(0, 0, 0)
+            pdf.set_text_color(0, 0, 0) 
             try:
-                pdf.multi_cell(0, 6, f"> {linha}") # Adiciona um marcador para separar visualmente
+                # Adiciona o prefixo "R:" para destacar visualmente a resposta
+                pdf.multi_cell(0, 6, f"R: {linha}")
                 pdf.ln(1)
             except:
-                # Caso a linha ainda tenha algum caractere "maldito", ele pula
-                continue
+                pass
             
     return pdf.output()
 
@@ -112,11 +135,11 @@ upload = st.file_uploader("📥 Arraste o PDF do Google Forms aqui", type="pdf")
 
 if upload:
     try:
-        with st.spinner("Organizando perguntas e destacando respostas..."):
+        with st.spinner("Removendo opções vazias e destacando respostas..."):
             texto_limpo = limpar_texto_forms(upload)
             pdf_final = criar_documento(texto_limpo)
             
-            st.success("✨ Anamnese organizada com sucesso!")
+            st.success("✨ Anamnese filtrada e pronta!")
             st.download_button(
                 label="📥 Baixar Anamnese Padronizada",
                 data=bytes(pdf_final),
